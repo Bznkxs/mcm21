@@ -3,7 +3,7 @@ import matplotlib.pyplot as pyplot
 plt = pyplot
 import numpy as np
 from tqdm import tqdm
-from array2gif import write_gif
+#from array2gif import write_gif
 from scipy.signal import convolve2d
 import scipy.sparse as sparse
 from mpl_toolkits.mplot3d import Axes3D
@@ -14,11 +14,11 @@ if torch.has_cuda:
 d_birth = 9  # must be odd
 d_death = 5
 
-w_b = torch.ones(d_birth, d_birth, dtype=torch.int16, device=device)
+w_b = torch.ones(d_birth, d_birth, dtype=torch.float32, device=device)
 w_b[d_birth//2, d_birth//2] = 0
 w_b = w_b.reshape(1, 1, d_birth, d_birth)
 
-w_d = torch.ones(d_death, d_death, dtype=torch.int16, device=device)
+w_d = torch.ones(d_death, d_death, dtype=torch.float32, device=device)
 w_d[d_death//2, d_death//2] = 0
 w_d = w_d.reshape(1, 1, d_death, d_death)
 
@@ -49,7 +49,7 @@ def fungisim(a, age, t):
 
 
     def trans(a):
-        return (a[0] * 255).repeat(3, 1, 1).numpy()
+        return (a[0] * 255).repeat(3, 1, 1).cpu().numpy()
     outs = [trans(a)]
     for i in tqdm(range(t)):
         debug(i,":")
@@ -67,9 +67,9 @@ def fungisim(a, age, t):
         rr = torch.rand((1, 1, k, k), device=device)
         debug("rr, k\n", rr, k)
         debug("sample_1\n", death_rates + rr)
-        sample = (death_rates + rr).to(torch.int16)
+        sample = (death_rates + rr).to(torch.float32)
         debug("sample\n", sample)
-        a = a - (a & sample)
+        a = a - (a * sample)
         debug("after a\n", a)
         #  birth stage
         sums = torch.conv2d(a, w_b, padding=d_birth//2)
@@ -80,17 +80,17 @@ def fungisim(a, age, t):
         rr = torch.rand((1, 1, k, k), device=device)
         debug("rr\n", rr)
         debug("sample1\n", birth_rates + rr)
-        sample = (birth_rates + rr).to(torch.int16)
-        sample = (~a & sample)
+        sample = (birth_rates + rr).to(torch.float32)
+        sample = ((1-a) * sample)
         age[sample > 0] = (torch.randn(age[sample > 0].shape, device=device) * expected_expectancy)
-        a |= sample
+        a += sample
         debug("at last\n", a)
         outs.append(trans(a))
     return outs
 
 def draw():
 
-    ski = torch.zeros(1, 1, k, k, dtype=torch.int16, device=device)
+    ski = torch.zeros(1, 1, k, k, dtype=torch.float32, device=device)
     rand_map = torch.rand((1, 1, k, k), device=device)
 
     ski[rand_map <= init_p] = 1
