@@ -55,5 +55,4 @@
 看fungi原文，目的：
 
 1. 获取真菌性质的原始数据，以便获取真菌种类、属性的数据。
-
 2. 为什么真菌的moisture要和competitive ranking放在一起画图呢？
