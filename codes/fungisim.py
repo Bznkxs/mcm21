@@ -18,6 +18,7 @@ if torch.has_cuda:
     dfloat = torch.float16 # torch.float16
     dint = torch.int8
 
+
 # debugging
 er = False
 logs = []
@@ -197,6 +198,7 @@ def draw():
     print(ski.sum())
     nums = fungisim(ski, None, t)  # num a 2-d list
     nums = np.array(nums).T  # a matrix
+
 
     fig = pyplot.figure()
     #pyplot.ion()
