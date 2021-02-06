@@ -18,6 +18,7 @@ if torch.has_cuda:
     dfloat = torch.float16 # torch.float16
     dint = torch.int8
 
+
 # debugging
 er = False
 logs = []
@@ -368,6 +369,7 @@ def draw():
     print([ski[0, i].sum() for i in range(n_fungi)])
     nums = fungisim_micro(ski, None, t)  # num a 2-d list
     nums = np.array(nums).T  # a matrix
+
 
     fig = pyplot.figure()
     #pyplot.ion()
