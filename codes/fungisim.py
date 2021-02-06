@@ -40,7 +40,7 @@ r = birth_rate - death_rate
 
 K = d_death * d_death * 0.741
 
-k = 8000
+k = 2000
 t = 100 * tr  # in timesteps
 
 init_p = 0.01
