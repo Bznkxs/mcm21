@@ -16,8 +16,8 @@ d_death = 3
 
 variance = 1
 
-dfloat = torch.float32 # torch.float16
-dint = torch.int32
+dfloat = torch.float16 # torch.float16
+dint = torch.int8
 
 w_b = torch.ones(d_birth, d_birth, dtype=dfloat, device=device)
 w_b[d_birth//2, d_birth//2] = 0
@@ -40,7 +40,7 @@ r = birth_rate - death_rate
 
 K = d_death * d_death * 0.741
 
-k = 300
+k = 8000
 t = 100 * tr  # in timesteps
 
 init_p = 0.01
@@ -103,9 +103,9 @@ def fungisim(a, age, t):
 def draw():
 
     ski = torch.zeros(1, 1, k, k, dtype=dfloat, device=device)
-    rand_map = torch.zeros(1,1,k,k)#torch.rand((1, 1, k, k), device=device)
+    rand_map = torch.rand((1, 1, k, k), device=device) #torch.zeros(1,1,k,k)
     rand_map[0,0,k//2,k//2] = 1
-    ski[rand_map >= init_p] = 1
+    ski[rand_map <= init_p] = 1
 
     age = ski * (torch.randn((1, 1, k, k), device=device) * variance + expected_expectancy)
     nums = fungisim(ski, age, t)
