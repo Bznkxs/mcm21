@@ -51,33 +51,33 @@ def make_circular(mat, h=None, d=None):
 
 
 # env consts
-d_birth = 9  # must be odd
-d_death = 9
+d_birth = 7  # must be odd
+d_death = 7
 
 variance = 1
 n_fungi = 3
 
 _birth_rates = torch.tensor([[
-    1.2, 2.5, 1.5
+    2.22, 2.25, 2.15
 ][:n_fungi]]).reshape((1, n_fungi, 1, 1))  # 1xnx1x1
 capacities = torch.tensor([[
     0.741, 0.541, 0.6
 ][:n_fungi]]).reshape((1, n_fungi, 1, 1))  # 1xnx1x1
 
 # exp. settings
-tr = 10  # timestep per sec
-k = 100  # width = height
-tot_time = 100  # total time span in sec
-init_p = 0.01  # initial density
+tr = 20  # timestep per sec
+k = 200  # width = height
+tot_time = 15  # total time span in sec
+init_p = 0.001  # initial density
 
 # calculated env. consts
-w_b = torch.ones(n_fungi, n_fungi, d_birth, d_birth, dtype=dfloat, device=device)
+w_b = torch.zeros(n_fungi, n_fungi, d_birth, d_birth, dtype=dfloat, device=device)
 for i in range(n_fungi):
     make_circular(w_b[i, i])
 
-w_d = torch.ones(1, n_fungi, d_death, d_death, dtype=dfloat, device=device)
+w_d = torch.zeros(n_fungi, n_fungi, d_death, d_death, dtype=dfloat, device=device)
 for i in range(n_fungi):
-    make_circular(w_b[0, i])
+    make_circular(w_d[i, i])
 
 death_range = w_d[0, 0].sum()
 birth_range = w_b[0, 0].sum()
@@ -90,13 +90,13 @@ t = tot_time * tr  # in timesteps
 
 # colors
 colors = np.array([
-    [0, 1, 1],
-    [1, 1, 0],
-    [1, 0, 1]
+    [1,0,0],
+    [0,1,0],
+    [0,0,1]
 ][:n_fungi]).reshape((n_fungi, 1, 1, 3))
 
 # simulation
-def fungisim(a, age, t):
+def fungisim_macro(a, age, t):
 
 
     def trans(a):
@@ -118,6 +118,177 @@ def fungisim(a, age, t):
         debug("sums\n", sums)
         sums[sums < 0.1] = 1
         death_rates = (sums > K) * (1 - K / sums)  # float, (1xnxkxk)
+        debug("death\n", death_rates)
+        death_rates[death_rates > 1] = 1  # death rate exceed
+        rr = torch.rand((1, n_fungi, k, k), device=device)
+        debug("rr, k\n", rr, k)
+        debug("sample_1\n", death_rates + rr)
+        sample = (death_rates + rr).to(dint)
+        sample[a < 0.1] = 0
+        debug("sample\n", sample)
+        a = a - sample
+        debug("after a\n", a)
+        if torch.max(a.sum(dim=1)) > 1 or torch.min(a) < 0:
+            print(torch.max(a.sum(dim=1)), torch.min(a) < 0)
+            import json
+            fp=open('./o.txt', 'w')
+            json.dump(a.tolist(), fp=fp)
+            fp.close()
+            for args, kwargs in logs:
+                print(*args, **kwargs)
+            a[a.sum(dim=1) > 1] = 0
+            a[a < 0] = 0
+        #age[a < 0.1] = 0
+
+
+        #  birth stage
+        sums_ = torch.conv2d(a, w_b, padding=d_birth//2)
+        debug('sums\n', sums_)
+        birth_rates = sums_ * birth_rate / birth_range  # float
+        debug("births\n", birth_rates)
+        # normalize
+        normfacts = birth_rates.sum(1)
+        normfacts[normfacts < 1] = 1
+        birth_rates /= normfacts
+        # roulette
+        rr = torch.rand(k, k, device=device, dtype=dfloat)
+        debug("rr\n", rr)
+        selected = torch.zeros(k, k, device=device, dtype=torch.bool)
+        sample = torch.zeros(1, n_fungi, k, k, device=device, dtype=torch.bool)
+        selected[birth_rates[0].sum(0) == 0] = True
+        selected[a[0].sum(0) > 0.1] = True
+        for j in range(n_fungi):
+            debug("selected\n", selected)
+            sample[0, j][(birth_rates[0, j] > rr) & (~selected)] = True
+
+            selected |= sample[0, j]
+            rr -= birth_rates[0, j]
+
+        debug("births_after\n", birth_rates)
+
+
+        a += sample
+        if torch.max(a.sum(dim=1)) > 1 or torch.min(a) < 0:
+            print(torch.max(a.sum(dim=1)), torch.min(a) < 0)
+
+            import json
+            fp=open('./o.txt', 'w')
+            json.dump(a.tolist(), fp=fp)
+            fp.close()
+            for args, kwargs in logs:
+                print(*args, **kwargs)
+            a[a.sum(dim=1) > 1] = 0
+            a[a < 0] = 0
+            # exit(-2)
+        debug("at last\n", a)
+        outs.append(trans(a))
+
+    return outs
+
+# in micro we need:
+# - material transfer matrix M_t: [ Me x Ms ] num of enzyme & num of substances
+# - resource generation matrix M_g: [ n x Me ] num of fungi types & num of enzyme
+# - resource reduction matrix M_r: [ n x Ms ] num of fungi types & num of substances (needed to survive)
+# - toxicity matrix M_tx: [n x Ms] describes toxicity of each substance with regard to each type of fungi
+#
+# assumptions:
+# - fungi secrete enzymes to their neighborhood
+# - enzymes decomposite nutrition in a linear manner with regard to their concentration
+# - fungi only absorb substances right below their grids
+# model:
+# - sum[l, i, j] calculates sum of fungi l in neighborhood of (i, j) [n x k x k]
+# - calculates enzyme generation  enz = (sum.permute(1,2,0).matmul(M_g)) [ k x k x Me ]
+#    - in-place generation
+#    - convolve to get diffused generation? do not convolve in the first place
+# - calculates resource generation (the most difficult step)
+#     - materials = enz.matmul(M_t)  [ k x k x Ms ]
+#     - an activation function
+# - now we get resources that each grid can get
+# - if not enough, die at a calculated probability
+# - toxic: let it be a probit function
+
+Me = 3
+Ms = 3
+M_t = torch.tensor([
+    [1, 0, 0],
+    [0, 1, 0,],
+    [0, 0, 1.,],
+], device=device, dtype=dfloat)  # Me x Ms
+M_g = torch.tensor([
+    [1.2, 0, 0],
+    [0, 2, 0],
+    [0, 0, 2]
+], device=device, dtype=dfloat)
+M_r = torch.tensor([
+    [1, 0, -0.10],
+    [-0.10, 1, 0],
+    [0, -0.10, 1]
+], device=device, dtype=dfloat)
+M_tx = torch.tensor([
+    [0, 0, 1],
+    [1, 0, 0],
+    [0, 1, 0]
+], device=device, dtype=dfloat)
+
+
+act_weight = torch.tensor([1, 10, 10],
+    device=device, dtype=dfloat)  # Me
+
+def s_curve(x):  # -1 <------> 1
+    return torch.sigmoid(x) * 2 - 1
+def act(x):
+    # k x k x Me
+
+    return (s_curve(x / act_weight) * (act_weight))
+    # exit(1)
+def fungisim_micro(a, age, t):
+    def trans(a):
+        out = a[0].cpu().numpy().reshape((n_fungi, k, k, 1))
+        #debug("out", a[0])
+        pic = np.zeros((k, k, 3))
+        for j in range(n_fungi):
+            pic += colors[j] * out[j]
+        #print("pic",pic)
+        pyplot.imsave(f'outputs/{i+1}.png', pic)
+        return [np.sum(out[j]) for j in range(n_fungi)]  # (a[0] * 255).repeat(3, 1, 1).cpu().numpy()
+    i = -1
+    outs = [trans(a)]
+    for i in tqdm(range(t)):
+        debug(i,":")
+        debug("a\n", a)
+
+        # death stage
+        sums = torch.conv2d(a, w_d, padding=d_death//2).reshape(n_fungi, k, k)  # (1xnxkxk)
+        debug("sums\n", sums.to(dint))
+        # print(sums.shape)
+        enz = (sums.permute(1,2,0).matmul(M_g))
+        debug("enz\n", ((enz*100).to(torch.int32).to(dfloat)/100).permute(2,0,1))
+        # convolve to get diffused generation
+        # pass through an activation function
+        enz = act(enz)
+        materials = enz.matmul(M_t)
+        materials[materials < 0] = 0
+        #debug("act\n", ((enz*100).to(torch.int32).to(dfloat)/100).permute(2,0,1))
+        #debug("mat\n", materials.permute(2,0,1))
+        materials = materials.reshape(k, k, 1, Ms)
+        fertilize = materials / M_r  # k,k,n,Ms
+        fertilize[fertilize > 1] = 1
+        fertilize[fertilize != fertilize] = 1  # deal with NaNs
+
+        toxics = ((materials >= 0) & (M_r < 0))
+        #debug("toxics", fertilize[toxics])
+        sig = torch.sigmoid((fertilize[toxics] + 1) * 10.)
+        #debug("sig", sig)
+        fertilize[toxics] = sig
+        #debug("fertilize\n", fertilize.permute(2,0,1,3))
+        #debug("toxic\n", toxics)
+
+        survive_rates = fertilize.prod(dim=3)  # k, k, n
+        debug("sur\n", survive_rates.permute(2,0,1))
+        death_rates = 1 - survive_rates
+        death_rates = death_rates.permute(2,0,1)  # n, k, k
+        death_rates = death_rates.reshape(1, n_fungi, k, k)
+
         debug("death\n", death_rates)
         death_rates[death_rates > 1] = 1  # death rate exceed
         rr = torch.rand((1, n_fungi, k, k), device=device)
@@ -194,8 +365,8 @@ def draw():
     mask = mask.to_dense().to(device)
     ski[0, :, rand_map <= init_p] = 1
     ski = ski * mask
-    print(ski.sum())
-    nums = fungisim(ski, None, t)  # num a 2-d list
+    print([ski[0, i].sum() for i in range(n_fungi)])
+    nums = fungisim_micro(ski, None, t)  # num a 2-d list
     nums = np.array(nums).T  # a matrix
 
     fig = pyplot.figure()
