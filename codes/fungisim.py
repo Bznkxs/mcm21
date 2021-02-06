@@ -9,15 +9,18 @@ import scipy.sparse as sparse
 from mpl_toolkits.mplot3d import Axes3D
 # conv
 device = 'cpu'
+dfloat = torch.float32 # torch.float16
+dint = torch.int8
 if torch.has_cuda:
     device = 'cuda'
+    dfloat = torch.float16 # torch.float16
+    dint = torch.int8
 d_birth = 3  # must be odd
 d_death = 3
 
 variance = 1
 
-dfloat = torch.float32 # torch.float16
-dint = torch.int32
+
 
 w_b = torch.ones(d_birth, d_birth, dtype=dfloat, device=device)
 w_b[d_birth//2, d_birth//2] = 0
@@ -40,7 +43,7 @@ r = birth_rate - death_rate
 
 K = d_death * d_death * 0.741
 
-k = 300
+k = 100
 t = 100 * tr  # in timesteps
 
 init_p = 0.01
@@ -114,6 +117,7 @@ def draw():
 
     pyplot.plot(nums)
     pyplot.show()
+
         #pyplot.pause(0.01)
     #pyplot.ioff()
     #pyplot.show()
