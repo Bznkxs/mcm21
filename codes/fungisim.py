@@ -14,15 +14,15 @@ if torch.has_cuda:
 d_birth = 9  # must be odd
 d_death = 5
 
-w_b = torch.ones(d_birth, d_birth, dtype=torch.float32, device=device)
+w_b = torch.ones(d_birth, d_birth, dtype=torch.float16, device=device)
 w_b[d_birth//2, d_birth//2] = 0
 w_b = w_b.reshape(1, 1, d_birth, d_birth)
 
-w_d = torch.ones(d_death, d_death, dtype=torch.float32, device=device)
+w_d = torch.ones(d_death, d_death, dtype=torch.float16, device=device)
 w_d[d_death//2, d_death//2] = 0
 w_d = w_d.reshape(1, 1, d_death, d_death)
 
-tr = 1  # timestep per sec
+tr = 5  # timestep per sec
 expected_expectancy = 10 * tr  # in timesteps
 
 # death rate
@@ -61,13 +61,13 @@ def fungisim(a, age, t):
         sums = torch.conv2d(a, w_d, padding=d_death//2)
         debug("sums\n", sums)
 
-        death_rates = b + r * sums / K  # float
+        death_rates = r * sums / K  # float
         debug("death\n", death_rates)
         death_rates[death_rates > 1.] = 1.  # death rate exceed
         rr = torch.rand((1, 1, k, k), device=device)
         debug("rr, k\n", rr, k)
         debug("sample_1\n", death_rates + rr)
-        sample = (death_rates + rr).to(torch.float32)
+        sample = (death_rates + rr).to(torch.int16)
         debug("sample\n", sample)
         a = a - (a * sample)
         debug("after a\n", a)
@@ -80,7 +80,7 @@ def fungisim(a, age, t):
         rr = torch.rand((1, 1, k, k), device=device)
         debug("rr\n", rr)
         debug("sample1\n", birth_rates + rr)
-        sample = (birth_rates + rr).to(torch.float32)
+        sample = (birth_rates + rr).to(torch.int16)
         sample = ((1-a) * sample)
         age[sample > 0] = (torch.randn(age[sample > 0].shape, device=device) * expected_expectancy)
         a += sample
@@ -90,7 +90,7 @@ def fungisim(a, age, t):
 
 def draw():
 
-    ski = torch.zeros(1, 1, k, k, dtype=torch.float32, device=device)
+    ski = torch.zeros(1, 1, k, k, dtype=torch.float16, device=device)
     rand_map = torch.rand((1, 1, k, k), device=device)
 
     ski[rand_map <= init_p] = 1
