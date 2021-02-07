@@ -9,6 +9,8 @@ import scipy.sparse as sparse
 from mpl_toolkits.mplot3d import Axes3D
 # conv
 
+
+
 eps = 1e-5
 
 # devices
@@ -17,7 +19,7 @@ dfloat = torch.float32 # torch.float16
 dint = torch.int8
 if torch.has_cuda:
     device = 'cuda'
-    dfloat = torch.float16 # torch.float16
+    dfloat = torch.float32 # torch.float16
     dint = torch.int8
 
 
@@ -55,11 +57,11 @@ def make_circular(mat, h=None, d=None):
 
 
 # env consts
-d_birth = 3  # must be odd
-d_death = 3
+d_birth = 9  # must be odd
+d_death =7
 
 variance = 1
-n_fungi = 1
+n_fungi = 3
 
 _birth_rates = torch.tensor([[
     2.22, 2.25, 2.15
@@ -69,10 +71,10 @@ capacities = torch.tensor([[
 ][:n_fungi]], dtype=dfloat, device=device).reshape((1, n_fungi, 1, 1))  # 1xnx1x1
 
 # exp. settings
-tr = 20  # timestep per sec
-k = 10  # width = height
-tot_time = 1  # total time span in sec
-init_p = 0.04  # initial density
+tr = 10  # timestep per sec
+k = 100  # width = height
+tot_time = 250  # total time span in sec
+init_p = 0.01  # initial density
 
 # calculated env. consts
 w_b = torch.zeros(n_fungi, n_fungi, d_birth, d_birth, dtype=dfloat, device=device)
@@ -82,6 +84,8 @@ for i in range(n_fungi):
 w_d = torch.zeros(n_fungi, n_fungi, d_death, d_death, dtype=dfloat, device=device)
 for i in range(n_fungi):
     make_circular(w_d[i, i])
+
+
 
 death_range = w_d[0, 0].sum()
 birth_range = w_b[0, 0].sum()
@@ -213,7 +217,7 @@ def fungisim_macro(a, age, t):
 #     - an activation function
 # - now we get resources that each grid can get
 # - if not enough, die at a calculated probability
-# - toxic: let it be a probit function
+# - toxic: let it be a sigmoid function
 
 Me = 3
 Ms = 3
@@ -227,15 +231,41 @@ M_g = torch.tensor([
     [0, 3, 0],
     [0, 0, 3]
 ], device=device, dtype=dfloat)[:n_fungi, :Me] / tr
-M_r = torch.tensor([
-    [1, 0, -0.10],
-    [-0.10, 1, 0],
-    [0, -0.10, 1]
+
+
+
+M_need = torch.tensor([
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1]
 ], device=device, dtype=dfloat)[:n_fungi, :Ms] / tr
 
+M_toxic = torch.tensor([
+    [0, 0, 10],
+    [10, 0, 0],
+    [0, 10, 0]
+], device=device, dtype=dfloat)[:n_fungi, :Ms] / tr
 
-act_weight = torch.tensor([1, 1, 1],
-    device=device, dtype=dfloat)[:Me] / tr / death_range # Me
+M_toxic[M_toxic > 0] = 1/M_toxic[M_toxic > 0]
+M_r = M_need - M_toxic
+
+M_absorb = M_need + ((M_toxic > 0) & (M_need == 0))
+
+
+w_enzgen = torch.zeros(n_fungi, n_fungi, d_death, d_death, dtype=dfloat, device=device)
+for i in range(n_fungi):
+    make_circular(w_enzgen[i, i])
+w_enzgen /= death_range
+
+w_absorb = torch.zeros(Ms, n_fungi, d_death, d_death, dtype=dfloat, device=device)
+for j in range(Ms):
+    for i in range(n_fungi):
+        make_circular(w_absorb[j, i])
+        w_absorb[j, i] *= M_absorb[i, j]
+
+act_weight = torch.tensor([0.6, 1, 1],
+    device=device, dtype=dfloat)[:Me] / tr # Me
+
 
 def s_curve(x):  # -1 <------> 1
     return (torch.sigmoid(x * 2) * 2 - 1)
@@ -262,29 +292,39 @@ def fungisim_micro(a, age, t):
         debug("a\n", a)
 
         # death stage
-        sums = torch.conv2d(a, w_d, padding=d_death//2).reshape(n_fungi, k, k)  # (1xnxkxk)
+        sums = torch.conv2d(a, w_enzgen, padding=d_death//2).reshape(n_fungi, k, k)  # (nxkxk)
 
-        sums /= death_range
         debug("sums\n", sums)
         # print(sums.shape)
-        enz = (sums.permute(1,2,0).matmul(M_g))
+        enz = (sums.permute(1, 2, 0).matmul(M_g))  # kxkxMe
         debug("enz\n", ((enz*100).to(torch.int32).to(dfloat)/100).permute(2,0,1))
         # convolve to get diffused generation
         # pass through an activation function
         enz = act(enz)
-        materials = enz.matmul(M_t)
+        materials = enz.matmul(M_t)  # kxkxMs
         materials[materials < 0] = 0
         debug("act\n", ((enz*100).to(torch.int32).to(dfloat)/100).permute(2,0,1))
         debug("mat\n", materials.permute(2,0,1))
         materials = materials.reshape(k, k, 1, Ms)
+        ########### conv ##########
+        materials = materials.permute(3, 2, 0, 1)  # Ms, 1, k, k
+        needs = torch.conv2d(a, w_absorb, padding=d_death//2)  # 1, Ms, k, k
+        needs = needs.permute(1, 0, 2, 3)
+        needs[(needs < 1e-08)] = 1
+        debug("Needs\n", needs)
+        materials /= needs  # Ms, 1, k, k
+        debug("Material\n", materials)
+        print(materials.shape)
+        materials = torch.conv2d(materials, w_d[0:1, 0:1], padding=d_death//2)  # Ms, 1, k, k
+        print(materials.shape)
 
-        materials = materials.permute(3, 2, 0, 1) # Ms, 1, k, k
-        materials = torch.conv2d(materials, w_d[0:1, 0:1], padding=d_death//2)  # Ms, 1, k, k  # convolved = fertilization in nearby grids
         materials = materials.permute(2, 3, 1, 0)  # k,k,1,Ms
-
+        ########## conv ###########
         debug("mat\n", materials.permute(3, 2,0,1))
-        fertilize = materials / M_r  # k,k,n,Ms
+        debug("Mr\n", M_r)
+        fertilize = materials * M_absorb / M_r  # k,k,n,Ms
         fertilize[fertilize > 1] = 1
+
         fertilize[fertilize != fertilize] = 1  # deal with NaNs
 
         toxics = ((materials >= 0) & (M_r < 0))
@@ -416,6 +456,13 @@ def draw():
     # write_gif(outs, 'output.gif')
 
 
+import sys
 
+feeee = open('C:\mcm21\codes\output.txt', 'w')
+
+sys.stdout = feeee
+sys.stderr = feeee
 # draw()
 draw()
+
+feeee.close()
