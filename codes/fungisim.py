@@ -60,10 +60,10 @@ n_fungi = 3
 
 _birth_rates = torch.tensor([[
     2.22, 2.25, 2.15
-][:n_fungi]]).reshape((1, n_fungi, 1, 1))  # 1xnx1x1
+][:n_fungi]], dtype=dfloat, device=device).reshape((1, n_fungi, 1, 1))  # 1xnx1x1
 capacities = torch.tensor([[
     0.741, 0.541, 0.6
-][:n_fungi]]).reshape((1, n_fungi, 1, 1))  # 1xnx1x1
+][:n_fungi]], dtype=dfloat, device=device).reshape((1, n_fungi, 1, 1))  # 1xnx1x1
 
 # exp. settings
 tr = 20  # timestep per sec
@@ -352,8 +352,8 @@ def draw():
     max_indices = torch.stack(
         [
             max_indices,
-            torch.repeat_interleave(torch.arange(k), k),
-            torch.arange(k).repeat(k)
+            torch.repeat_interleave(torch.arange(k), k).to(device),
+            torch.arange(k).repeat(k).to(device)
         ]
     )
     print(max_indices)
