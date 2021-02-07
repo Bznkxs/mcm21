@@ -9,6 +9,8 @@ import scipy.sparse as sparse
 from mpl_toolkits.mplot3d import Axes3D
 # conv
 
+eps = 1e-5
+
 # devices
 device = 'cpu'
 dfloat = torch.float32 # torch.float16
@@ -20,6 +22,7 @@ if torch.has_cuda:
 
 
 # debugging
+plotting_period = 1
 er = False
 logs = []
 def debug(*args, **kwargs):
@@ -52,11 +55,11 @@ def make_circular(mat, h=None, d=None):
 
 
 # env consts
-d_birth = 7  # must be odd
-d_death = 7
+d_birth = 3  # must be odd
+d_death = 3
 
 variance = 1
-n_fungi = 3
+n_fungi = 1
 
 _birth_rates = torch.tensor([[
     2.22, 2.25, 2.15
@@ -67,9 +70,9 @@ capacities = torch.tensor([[
 
 # exp. settings
 tr = 20  # timestep per sec
-k = 200  # width = height
-tot_time = 15  # total time span in sec
-init_p = 0.001  # initial density
+k = 10  # width = height
+tot_time = 1  # total time span in sec
+init_p = 0.04  # initial density
 
 # calculated env. consts
 w_b = torch.zeros(n_fungi, n_fungi, d_birth, d_birth, dtype=dfloat, device=device)
@@ -103,11 +106,15 @@ def fungisim_macro(a, age, t):
     def trans(a):
         out = a[0].cpu().numpy().reshape((n_fungi, k, k, 1))
         #debug("out", a[0])
-        pic = np.zeros((k, k, 3))
-        for j in range(n_fungi):
-            pic += colors[j] * out[j]
+
+
         #print("pic",pic)
-        pyplot.imsave(f'outputs/{i+1}.png', pic)
+        if i % 5 == 0:
+            pic = np.zeros((k, k, 3))
+            for j in range(n_fungi):
+                pic += colors[j] * out[j]
+            print("pic")
+            pyplot.imsave(f'outputs/{i+1}.png', pic)
         return [np.sum(out[j]) for j in range(n_fungi)]  # (a[0] * 255).repeat(3, 1, 1).cpu().numpy()
     i = -1
     outs = [trans(a)]
@@ -214,29 +221,24 @@ M_t = torch.tensor([
     [1, 0, 0],
     [0, 1, 0,],
     [0, 0, 1.,],
-], device=device, dtype=dfloat)  # Me x Ms
+], device=device, dtype=dfloat)[:Me, :Ms]  # Me x Ms
 M_g = torch.tensor([
-    [1.2, 0, 0],
-    [0, 2, 0],
-    [0, 0, 2]
-], device=device, dtype=dfloat)
+    [2, 0, 0],
+    [0, 3, 0],
+    [0, 0, 3]
+], device=device, dtype=dfloat)[:n_fungi, :Me] / tr
 M_r = torch.tensor([
     [1, 0, -0.10],
     [-0.10, 1, 0],
     [0, -0.10, 1]
-], device=device, dtype=dfloat)
-M_tx = torch.tensor([
-    [0, 0, 1],
-    [1, 0, 0],
-    [0, 1, 0]
-], device=device, dtype=dfloat)
+], device=device, dtype=dfloat)[:n_fungi, :Ms] / tr
 
 
-act_weight = torch.tensor([1, 10, 10],
-    device=device, dtype=dfloat)  # Me
+act_weight = torch.tensor([1, 1, 1],
+    device=device, dtype=dfloat)[:Me] / tr / death_range # Me
 
 def s_curve(x):  # -1 <------> 1
-    return torch.sigmoid(x) * 2 - 1
+    return (torch.sigmoid(x * 2) * 2 - 1)
 def act(x):
     # k x k x Me
 
@@ -246,11 +248,12 @@ def fungisim_micro(a, age, t):
     def trans(a):
         out = a[0].cpu().numpy().reshape((n_fungi, k, k, 1))
         #debug("out", a[0])
-        pic = np.zeros((k, k, 3))
-        for j in range(n_fungi):
-            pic += colors[j] * out[j]
-        #print("pic",pic)
-        pyplot.imsave(f'outputs/{i+1}.png', pic)
+        if i % plotting_period == 0:
+            pic = np.zeros((k, k, 3))
+            for j in range(n_fungi):
+                pic += colors[j] * out[j]
+            #print("pic")
+            pyplot.imsave(f'outputs/{i+1}.png', pic)
         return [np.sum(out[j]) for j in range(n_fungi)]  # (a[0] * 255).repeat(3, 1, 1).cpu().numpy()
     i = -1
     outs = [trans(a)]
@@ -260,7 +263,9 @@ def fungisim_micro(a, age, t):
 
         # death stage
         sums = torch.conv2d(a, w_d, padding=d_death//2).reshape(n_fungi, k, k)  # (1xnxkxk)
-        debug("sums\n", sums.to(dint))
+
+        sums /= death_range
+        debug("sums\n", sums)
         # print(sums.shape)
         enz = (sums.permute(1,2,0).matmul(M_g))
         debug("enz\n", ((enz*100).to(torch.int32).to(dfloat)/100).permute(2,0,1))
@@ -269,9 +274,15 @@ def fungisim_micro(a, age, t):
         enz = act(enz)
         materials = enz.matmul(M_t)
         materials[materials < 0] = 0
-        #debug("act\n", ((enz*100).to(torch.int32).to(dfloat)/100).permute(2,0,1))
-        #debug("mat\n", materials.permute(2,0,1))
+        debug("act\n", ((enz*100).to(torch.int32).to(dfloat)/100).permute(2,0,1))
+        debug("mat\n", materials.permute(2,0,1))
         materials = materials.reshape(k, k, 1, Ms)
+
+        materials = materials.permute(3, 2, 0, 1) # Ms, 1, k, k
+        materials = torch.conv2d(materials, w_d[0:1, 0:1], padding=d_death//2)  # Ms, 1, k, k  # convolved = fertilization in nearby grids
+        materials = materials.permute(2, 3, 1, 0)  # k,k,1,Ms
+
+        debug("mat\n", materials.permute(3, 2,0,1))
         fertilize = materials / M_r  # k,k,n,Ms
         fertilize[fertilize > 1] = 1
         fertilize[fertilize != fertilize] = 1  # deal with NaNs
@@ -281,18 +292,19 @@ def fungisim_micro(a, age, t):
         sig = torch.sigmoid((fertilize[toxics] + 1) * 10.)
         #debug("sig", sig)
         fertilize[toxics] = sig
-        #debug("fertilize\n", fertilize.permute(2,0,1,3))
+        fertilize = fertilize.permute(3,2,0,1)  # M, n, k, k
+
+        debug("fertilize\n", fertilize)
         #debug("toxic\n", toxics)
 
-        survive_rates = fertilize.prod(dim=3)  # k, k, n
-        debug("sur\n", survive_rates.permute(2,0,1))
+        survive_rates = fertilize.prod(dim=0)  # n, k, k
+        debug("sur\n", survive_rates)
         death_rates = 1 - survive_rates
-        death_rates = death_rates.permute(2,0,1)  # n, k, k
         death_rates = death_rates.reshape(1, n_fungi, k, k)
 
         debug("death\n", death_rates)
         death_rates[death_rates > 1] = 1  # death rate exceed
-        rr = torch.rand((1, n_fungi, k, k), device=device)
+        rr = torch.rand((1, n_fungi, k, k), device=device) * (1 - eps)
         debug("rr, k\n", rr, k)
         debug("sample_1\n", death_rates + rr)
         sample = (death_rates + rr).to(dint)
@@ -301,9 +313,18 @@ def fungisim_micro(a, age, t):
         a = a - sample
         debug("after a\n", a)
         if torch.max(a.sum(dim=1)) > 1 or torch.min(a) < 0:
+            print(torch.max(a.sum(dim=1)), torch.min(a) < 0)
+
+            import json
+            fp=open('./o.txt', 'w')
+            json.dump(a.tolist(), fp=fp)
+            fp.close()
             for args, kwargs in logs:
                 print(*args, **kwargs)
-            exit(-1)
+            a = a.permute(1, 0, 2, 3)
+            a[:, a.sum(dim=0) > 1] = 0
+            a = a.permute(1, 0, 2, 3)
+            a[a < 0] = 0
         #age[a < 0.1] = 0
 
 
@@ -335,9 +356,18 @@ def fungisim_micro(a, age, t):
 
         a += sample
         if torch.max(a.sum(dim=1)) > 1 or torch.min(a) < 0:
+            print(torch.max(a.sum(dim=1)), torch.min(a) < 0)
+
+            import json
+            fp=open('./o.txt', 'w')
+            json.dump(a.tolist(), fp=fp)
+            fp.close()
             for args, kwargs in logs:
                 print(*args, **kwargs)
-            exit(-2)
+            a = a.permute(1, 0, 2, 3)
+            a[:, a.sum(dim=0) > 1] = 0
+            a = a.permute(1, 0, 2, 3)
+            a[a < 0] = 0
         debug("at last\n", a)
         outs.append(trans(a))
 
