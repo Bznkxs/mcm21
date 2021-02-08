@@ -62,7 +62,7 @@ d_death = 7
 # exp. settings
 tr = 10  # timestep per sec
 k = 100  # width = height
-tot_time = 1  # total time span in sec
+tot_time = 140  # total time span in sec
 init_p = 0.03  # initial density
 # calculated exp. settings
 t = tot_time * tr  # in timesteps
@@ -217,9 +217,15 @@ setting_data = [(
         [-1.0],
         [0]
     ),
+######## setting8 #########
+   (
+       [22, 18, 26, 26, 26],
+       [-0.5, -0.5, -0.5, -1.0, 0],
+       [0, 30, 60, 90, 120]
+   ),
 ]
 
-setting_no = 0
+setting_no = 7
 temp, moist, changes = setting_data[setting_no]
 
 for i in range(len(changes)):
@@ -421,8 +427,8 @@ def fungisim_macro(a, age, t):
     # exit(1)
 def fungisim_micro(a, age, t):
     def trans(a):
-        w1 = a[0].sum(dim=2).sum(dim=1, keepdims=True)
-        w1 = M_g[:, -1:].t().mm(w1)
+        w1 = a[0].sum()#(dim=2).sum(dim=1, keepdims=True)
+        #w1 = M_g[:, -1:].t().mm(w1)
 
         out = a[0].cpu().numpy().reshape((n_fungi, k, k, 1))
         #debug("out", a[0])
