@@ -57,21 +57,21 @@ def make_circular(mat, h=None, d=None):
 
 
 # env consts
-d_birth = 9  # must be odd
+d_birth = 11  # must be odd
 d_death = 7
 # exp. settings
 tr = 10  # timestep per sec
 k = 100  # width = height
-tot_time = 1  # total time span in sec
+tot_time = 100  # total time span in sec
 init_p = 0.09  # initial density
 # calculated exp. settings
 t = tot_time * tr  # in timesteps
 
 n_fungi = 3
 
-#_birth_rates = torch.tensor([[
-#    2.22, 2.25, 2.15
-#][:n_fungi]], dtype=dfloat, device=device).reshape((1, n_fungi, 1, 1))  # 1xnx1x1
+_birth_rates = torch.tensor([[
+   2.22, 2.25, 2.15
+][:n_fungi]], dtype=dfloat, device=device).reshape((1, n_fungi, 1, 1))  # 1xnx1x1
 
 capacities = torch.tensor([[
     0.741, 0.541, 0.6
@@ -90,16 +90,16 @@ M_g = torch.tensor([
     [0, 3, 0],
     [0, 0, 3]
 ], device=device, dtype=dfloat)[:n_fungi, :Me] / tr
-# M_need = torch.tensor([
-#     [1, 0, 0],
-#     [0, 1, 0],
-#     [0, 0, 1]
-# ], device=device, dtype=dfloat)[:n_fungi, :Ms] / tr
-# M_toxic = torch.tensor([
-#     [0, 0, 1.0],
-#     [1.0, 0, 0],
-#     [0, 1.0, 0]
-# ], device=device, dtype=dfloat)[:n_fungi, :Ms] / tr
+M_need = torch.tensor([
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1]
+], device=device, dtype=dfloat)[:n_fungi, :Ms] / tr
+M_toxic = torch.tensor([
+    [0, 0, 1.0],
+    [1.0, 0, 0],
+    [0, 1.0, 0]
+], device=device, dtype=dfloat)[:n_fungi, :Ms] / tr
 concentration_subs = torch.tensor([0.6, 1, 1], device=device, dtype=dfloat)[:Me] / tr # Me
 
 fungi_list, tpcurve, decurve, battles = data_conversion()
@@ -121,14 +121,12 @@ consider_interaction = True
 if consider_interaction:
     for i, s1 in enumerate(fungi_list):
         for j, s2 in enumerate(fungi_list):
-            M_toxic[i, j] = battles[s2][s1] / 10
+            M_toxic[i, j] = battles[s2][s1]
 
-print("-------------")
-print(M_toxic)
-print("-------------")
 
 M_toxic /= tr
-# M_toxic[M_toxic > 0] = 1/M_toxic[M_toxic > 0]
+rev_m_toxic = torch.zeros(Me, Ms, device=device, dtype=dfloat)
+rev_m_toxic[M_toxic > 0] = 1/M_toxic[M_toxic > 0]
 
 
 # requirement in std environment
@@ -156,10 +154,10 @@ def load_settings(temperature, moisture):
         M_t[i, i] = decomposition_rate[fungi]
         M_t[i, -1] = decomposition_rate[fungi]
 
-    print(M_t)
-    print(M_g)
-    print(M_need)
-    print(M_toxic)
+    # print(M_t)
+    # print(M_g)
+    # print(M_need)
+    # print(M_toxic)
 
 
 
@@ -194,6 +192,7 @@ K = 1.
 birth_rate = 1.
 r = birth_rate
 M_r = torch.Tensor()
+M_r2 = torch.Tensor()
 M_absorb = torch.Tensor()
 
 w_b = torch.zeros(n_fungi, n_fungi, d_birth, d_birth, dtype=dfloat, device=device)
@@ -221,7 +220,7 @@ w_enzgen /= death_range
 
 def setting_calculation():
     #import time
-    global w_b, w_d, death_range, birth_range, K, birth_rate, r, t, M_toxic, M_r, M_absorb, w_enzgen, w_absorb
+    global w_b, w_d, death_range, birth_range, K, birth_rate, r, t, M_toxic, M_r, M_absorb, w_enzgen, w_absorb, M_r2
     # calculated env. consts
     #tw = time.time()
     K = death_range * capacities
@@ -233,10 +232,13 @@ def setting_calculation():
 
 
     #t001 = time.time()
-    M_r = M_need  # - M_toxic
-    #t01 = time.time()
-    M_absorb = M_need + ((M_toxic > 0) & (M_need == 0)) / tr
 
+    M_r = M_need# - rev_m_toxic
+    M_r2 = M_need - rev_m_toxic
+    #t01 = time.time()
+    M_absorb = M_need # + ((M_toxic > 0) & (M_need == 0)) / tr
+    #print("absorb")
+    #print(M_absorb)
 
 
     #t0=time.time()
@@ -414,6 +416,7 @@ def fungisim_micro(a, age, t):
         debug("act\n", ((enz*100).to(torch.int32).to(dfloat)/100).permute(2,0,1))
         debug("mat\n", materials.permute(2,0,1))
         materials = materials.reshape(k, k, 1, Ms)
+        gmaterials = materials
         ########### conv ##########
         materials = materials.permute(3, 2, 0, 1)  # Ms, 1, k, k
         needs = torch.conv2d(a, w_absorb, padding=d_death//2)  # 1, Ms, k, k
@@ -428,17 +431,34 @@ def fungisim_micro(a, age, t):
 
         materials = materials.permute(2, 3, 1, 0)  # k,k,1,Ms
         ########## conv ###########
-        debug("mat\n", materials.permute(3, 2,0,1))
+        debug("mat\n", materials.permute(3, 2, 0, 1))
         debug("Mr\n", M_r)
+        #print("sdfsdfsdf")
+        # quest = (M_absorb/M_r)
+        # print(quest[quest<0].cpu().numpy().tolist())
+        # print(len(quest[quest<-1]))
+        #print("...")
+        #print(len(materials[materials>1]))
         fertilize = materials * M_absorb / M_r  # k,k,n,Ms
         fertilize[fertilize > 1] = 1
         fertilize[fertilize != fertilize] = 1  # deal with NaNs
+        fertilize1 = -gmaterials * rev_m_toxic # / 10
 
-        toxics = ((M_toxic > 0))
+
+        # print(fertilize1.cpu().numpy().tolist())
+        ques = materials / M_r2
+        toxic = (ques < 0)
+        # print("toxic", len(fertilize1[toxic]))
+
+        #print(len(fertilize1[ddd]))
+        #print("ccccc")
         #debug("toxics", fertilize[toxics])
-        sig = torch.sigmoid((fertilize[toxics] + 1) * 10.)
+        sig = torch.sigmoid((fertilize1 + 10) * 10.)
+        # print("sig", torch.min(sig))
         #debug("sig", sig)
-        fertilize[toxics] = sig
+        fertilize[toxic] = sig[toxic]
+        #print(len(fertilize[fertilize > 1]))
+
         fertilize = fertilize.permute(3,2,0,1)  # M, n, k, k
 
         debug("fertilize\n", fertilize)
@@ -525,7 +545,7 @@ def draw():
     ski = torch.zeros(1, n_fungi, k, k, dtype=dfloat, device=device)
     rand_map = torch.rand((1, n_fungi, k, k), device=device)
     max_indices = rand_map.view(n_fungi, -1).argmax(0)
-    print(max_indices)
+  #  print(max_indices)
     rand_map = torch.rand((k, k), device=device)
     max_indices = torch.stack(
         [
@@ -534,7 +554,7 @@ def draw():
             torch.arange(k).repeat(k).to(device)
         ]
     )
-    print(max_indices)
+   # print(max_indices)
     mask = torch.sparse_coo_tensor(
         max_indices,
         torch.ones(len(max_indices[0])),
