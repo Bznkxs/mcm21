@@ -62,7 +62,7 @@ d_death = 7
 # exp. settings
 tr = 10  # timestep per sec
 k = 100  # width = height
-tot_time = 1  # total time span in sec
+tot_time = 100  # total time span in sec
 init_p = 0.03  # initial density
 # calculated exp. settings
 t = tot_time * tr  # in timesteps
@@ -417,12 +417,11 @@ def fungisim_macro(a, age, t):
 # - if not enough, die at a calculated probability
 # - toxic: let it be a sigmoid function
 
-
+plotting_period = 100000000000000
     # exit(1)
 def fungisim_micro(a, age, t):
     def trans(a):
-        w1 = a[0].sum(dim=2).sum(dim=1, keepdims=True)
-        w1 = M_g[:, -1:].t().mm(w1)
+        w1 = dr # a[0].sum()
 
         out = a[0].cpu().numpy().reshape((n_fungi, k, k, 1))
         #debug("out", a[0])
@@ -435,6 +434,8 @@ def fungisim_micro(a, age, t):
 
         return [np.sum(out[j]) for j in range(n_fungi)] + [float(w1)] # (a[0] * 255).repeat(3, 1, 1).cpu().numpy()
     i = -1
+    dr = 0
+
     outs = [trans(a)]
     p = 0
     for i in tqdm(range(t)):
@@ -461,6 +462,7 @@ def fungisim_micro(a, age, t):
         enz = act(enz)
         materials = enz.matmul(M_t)  # kxkxMs
         materials[materials < 0] = 0
+        dr = materials.sum() / k / k
         debug("act\n", ((enz*100).to(torch.int32).to(dfloat)/100).permute(2,0,1))
         debug("mat\n", materials.permute(2,0,1))
         materials = materials.reshape(k, k, 1, Ms)
