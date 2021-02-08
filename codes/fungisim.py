@@ -423,7 +423,7 @@ def fungisim_micro(a, age, t):
         gmaterials = materials
         ########### conv ##########
         materials = materials.permute(3, 2, 0, 1)  # Ms, 1, k, k
-        tdr = materials.su
+        # tdr = materials.sum()
         needs = torch.conv2d(a, w_absorb, padding=d_death//2)  # 1, Ms, k, k
         needs = needs.permute(1, 0, 2, 3)
         needs[(needs < 1e-08)] = 1

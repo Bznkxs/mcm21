@@ -189,6 +189,7 @@ def data_conversion():
     ret = []
     with open(fn0) as sfp0:
         fungus = json.load(sfp0)
+        fungus = ['p.flav.s', 'p.flav.n', 'm.trem.n', 'm.trem.s', 'p.robin.n', 'p.rufa.acer.s']
         ret.append(fungus)
 
 
