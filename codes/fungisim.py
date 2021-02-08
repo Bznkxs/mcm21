@@ -233,7 +233,7 @@ def setting_calculation():
 
 
     #t001 = time.time()
-    M_r = M_need - M_toxic
+    M_r = M_need  # - M_toxic
     #t01 = time.time()
     M_absorb = M_need + ((M_toxic > 0) & (M_need == 0)) / tr
 
@@ -432,10 +432,9 @@ def fungisim_micro(a, age, t):
         debug("Mr\n", M_r)
         fertilize = materials * M_absorb / M_r  # k,k,n,Ms
         fertilize[fertilize > 1] = 1
-
         fertilize[fertilize != fertilize] = 1  # deal with NaNs
 
-        toxics = ((materials >= 0) & (M_r < 0))
+        toxics = ((M_toxic > 0))
         #debug("toxics", fertilize[toxics])
         sig = torch.sigmoid((fertilize[toxics] + 1) * 10.)
         #debug("sig", sig)
