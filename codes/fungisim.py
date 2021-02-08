@@ -62,7 +62,7 @@ d_death = 7
 # exp. settings
 tr = 10  # timestep per sec
 k = 100  # width = height
-tot_time = 140  # total time span in sec
+tot_time = 1  # total time span in sec
 init_p = 0.03  # initial density
 # calculated exp. settings
 t = tot_time * tr  # in timesteps
@@ -636,11 +636,26 @@ def draw():
         return '#' + h(r) + h(g) + h(b)
     print(fungi_list)
 
+    final_population = []
+    tot = 0
     for _i, num in enumerate(nums[:-1]):
         pyplot.plot(np.arange(0, t + 1) / tr, num, c=getcolor(colors[_i, 0, 0]) )
+        final_population.append((fungi_list[_i], num[-1]))
+        tot += num[-1]
+
+    final_population.sort(key=lambda x: x[1], reverse=True)
+    print("-----final population-----")
+    print("\ttot:\t", tot)
+    for i, (fungus, pop) in enumerate(final_population):
+        print(f"#{i+1}\t{fungus}:\t{pop}")
+
+    print("-----population ratio-----")
+    for i, (fungus, pop) in enumerate(final_population):
+        print(f"#{i+1}\t{fungus}:\t{pop / tot}")
     pyplot.legend(fungi_list)
     pyplot.xlabel('time')
     pyplot.ylabel('population')
+
     pyplot.show()
 
     pyplot.plot(np.arange(0, t + 1) / tr, nums[-1], c='black', label='TDR')
