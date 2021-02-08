@@ -174,9 +174,53 @@ def load_settings(temperature, moisture):
     # print(spend)
     # print(">",times[-1]-times[0])
     #print(times)
-temp = [22, 26, 26]
-moist = [-0.5, -0.5, -1]
-changes = [0, 30, 60]
+
+setting_data = [(
+######### setting1 ########
+        [22, 26, 26],
+        [-0.5, -0.5, -1],
+        [0, 30, 60]
+    ),
+######### setting2 ########
+    (
+        [25],
+        [-0.4],
+        [0]
+    ),
+######### setting3 ########
+    (
+        [25],
+        [-3.0],
+        [0]
+    ),
+######## setting4 #########
+    (
+        [20],
+        [-1.0],
+        [0]
+    ),
+######### setting5 ########
+    (
+        [12],
+        [-1.5],
+        [0]
+    ),
+######### setting6 ########
+    (
+        [10],
+        [-2.0],
+        [0]
+    ),
+######## setting7 #########
+    (
+        [0],
+        [-1.0],
+        [0]
+    ),
+]
+
+setting_no = 0
+temp, moist, changes = setting_data[setting_no]
 
 for i in range(len(changes)):
     changes[i] *= tr
