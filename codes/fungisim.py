@@ -62,8 +62,8 @@ d_death = 7
 # exp. settings
 tr = 10  # timestep per sec
 k = 100  # width = height
-tot_time = 100  # total time span in sec
-init_p = 0.09  # initial density
+tot_time = 140  # total time span in sec
+init_p = 0.03  # initial density
 # calculated exp. settings
 t = tot_time * tr  # in timesteps
 
@@ -174,9 +174,9 @@ def load_settings(temperature, moisture):
     # print(spend)
     # print(">",times[-1]-times[0])
     #print(times)
-temp = [22, 28, 28]
+temp = [22, 26, 26]
 moist = [-0.5, -0.5, -1]
-changes = [0, 10, 20]
+changes = [0, 30, 60]
 
 for i in range(len(changes)):
     changes[i] *= tr
@@ -377,6 +377,9 @@ def fungisim_macro(a, age, t):
     # exit(1)
 def fungisim_micro(a, age, t):
     def trans(a):
+        w1 = a[0].sum(dim=2).sum(dim=1, keepdims=True)
+        w1 = M_g[:, -1:].t().mm(w1)
+
         out = a[0].cpu().numpy().reshape((n_fungi, k, k, 1))
         #debug("out", a[0])
         if i % plotting_period == 0:
@@ -385,7 +388,8 @@ def fungisim_micro(a, age, t):
                 pic += colors[j] * out[j]
             #print("pic")
             pyplot.imsave(f'outputs/{i+1}.png', pic)
-        return [np.sum(out[j]) for j in range(n_fungi)]  # (a[0] * 255).repeat(3, 1, 1).cpu().numpy()
+
+        return [np.sum(out[j]) for j in range(n_fungi)] + [float(w1)] # (a[0] * 255).repeat(3, 1, 1).cpu().numpy()
     i = -1
     outs = [trans(a)]
     p = 0
@@ -419,6 +423,7 @@ def fungisim_micro(a, age, t):
         gmaterials = materials
         ########### conv ##########
         materials = materials.permute(3, 2, 0, 1)  # Ms, 1, k, k
+        tdr = materials.su
         needs = torch.conv2d(a, w_absorb, padding=d_death//2)  # 1, Ms, k, k
         needs = needs.permute(1, 0, 2, 3)
         needs[(needs < 1e-08)] = 1
@@ -453,7 +458,7 @@ def fungisim_micro(a, age, t):
         #print(len(fertilize1[ddd]))
         #print("ccccc")
         #debug("toxics", fertilize[toxics])
-        sig = torch.sigmoid((fertilize1 + 10) * 10.)
+        sig = torch.sigmoid((fertilize1 + 23) * 10.)
         # print("sig", torch.min(sig))
         #debug("sig", sig)
         fertilize[toxic] = sig[toxic]
@@ -467,6 +472,7 @@ def fungisim_micro(a, age, t):
         survive_rates = fertilize.prod(dim=0)  # n, k, k
         debug("sur\n", survive_rates)
         death_rates = 1 - survive_rates
+        death_rates /= np.sqrt(tr)
         death_rates = death_rates.reshape(1, n_fungi, k, k)
 
         debug("death\n", death_rates)
@@ -584,8 +590,19 @@ def draw():
                 hh = '0' + hh
             return hh
         return '#' + h(r) + h(g) + h(b)
-    for _i, num in enumerate(nums):
-        pyplot.plot(np.arange(0, t + 1) / tr, num, c=getcolor(colors[_i, 0, 0]))
+    print(fungi_list)
+
+    for _i, num in enumerate(nums[:-1]):
+        pyplot.plot(np.arange(0, t + 1) / tr, num, c=getcolor(colors[_i, 0, 0]) )
+    pyplot.legend(fungi_list)
+    pyplot.xlabel('time')
+    pyplot.ylabel('population')
+    pyplot.show()
+
+    pyplot.plot(np.arange(0, t + 1) / tr, nums[-1], c='black', label='TDR')
+    pyplot.xlabel('time')
+    pyplot.ylabel('TDR')
+    #pyplot.title('Graph of TDR-time')
     pyplot.show()
 
         #pyplot.pause(0.01)
