@@ -72,7 +72,7 @@ capacities = torch.tensor([[
 
 # exp. settings
 tr = 10  # timestep per sec
-k = 100  # width = height
+k = 2000  # width = height
 tot_time = 250  # total time span in sec
 init_p = 0.01  # initial density
 
@@ -117,7 +117,7 @@ def fungisim_macro(a, age, t):
             pic = np.zeros((k, k, 3))
             for j in range(n_fungi):
                 pic += colors[j] * out[j]
-            print("pic")
+            # print("pic")
             pyplot.imsave(f'outputs/{i+1}.png', pic)
         return [np.sum(out[j]) for j in range(n_fungi)]  # (a[0] * 255).repeat(3, 1, 1).cpu().numpy()
     i = -1
@@ -141,7 +141,7 @@ def fungisim_macro(a, age, t):
         a = a - sample
         debug("after a\n", a)
         if torch.max(a.sum(dim=1)) > 1 or torch.min(a) < 0:
-            print(torch.max(a.sum(dim=1)), torch.min(a) < 0)
+            # print(torch.max(a.sum(dim=1)), torch.min(a) < 0)
             import json
             fp=open('./o.txt', 'w')
             json.dump(a.tolist(), fp=fp)
@@ -241,9 +241,9 @@ M_need = torch.tensor([
 ], device=device, dtype=dfloat)[:n_fungi, :Ms] / tr
 
 M_toxic = torch.tensor([
-    [0, 0, 10],
-    [10, 0, 0],
-    [0, 10, 0]
+    [0, 0, 1.0],
+    [1.0, 0, 0],
+    [0, 1.0, 0]
 ], device=device, dtype=dfloat)[:n_fungi, :Ms] / tr
 
 M_toxic[M_toxic > 0] = 1/M_toxic[M_toxic > 0]
@@ -314,9 +314,9 @@ def fungisim_micro(a, age, t):
         debug("Needs\n", needs)
         materials /= needs  # Ms, 1, k, k
         debug("Material\n", materials)
-        print(materials.shape)
+        #print(materials.shape)
         materials = torch.conv2d(materials, w_d[0:1, 0:1], padding=d_death//2)  # Ms, 1, k, k
-        print(materials.shape)
+        #print(materials.shape)
 
         materials = materials.permute(2, 3, 1, 0)  # k,k,1,Ms
         ########## conv ###########
@@ -458,11 +458,11 @@ def draw():
 
 import sys
 
-feeee = open('C:\mcm21\codes\output.txt', 'w')
+# feeee = open('C:\mcm21\codes\output.txt', 'w')
 
-sys.stdout = feeee
-sys.stderr = feeee
+#sys.stdout = feeee
+#sys.stderr = feeee
 # draw()
 draw()
 
-feeee.close()
+#feeee.close()
